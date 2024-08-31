@@ -698,6 +698,7 @@ class Move:
                         if square_non_empty and self.board_array[self.x][self.y].is_black() == self.black_turn:
                             self.possible_piece_dest = self.board_array[self.x][self.y].get_possible_dest()
                             valid = True
+            pygame.display.update()
         return in_game
 
     def revalidation(self):
@@ -779,7 +780,7 @@ class Move:
                                 self.board.print_board_white(False)
                             pygame.display.update()
                             return False
-        
+            pygame.display.update()
                             
     def print_possible_moves(self):
         if self.black_turn:
@@ -810,6 +811,10 @@ class Move:
         is_sim = True
         possible_enemy_dest = board_enemy_search(is_sim, self.black_turn, self.board_array, self.player_factor)
         if len(self.possible_friendly_dest) == 0:
+            for j in range(8):
+                for i in range(8):
+                    if type(self.board_array[i][j]) is King and self.board_array[i][j].is_black() == self.black_turn:
+                        king_pos = (i, j)
             if king_pos in possible_enemy_dest:
                 game_state = (True, False)
             else:
@@ -852,6 +857,7 @@ class Move:
                         elif pos_x == 11:
                             board_array[self.x][self.y] = Knight(self.black_turn, self.surface)
                         in_promotion = False
+            pygame.display.update()
                         
 
 
@@ -913,6 +919,7 @@ class Game:
                         self.draw_menu()
                     elif colision(QUIT_BUTTON[POS], mouse_pos):
                         in_menu = False
+            pygame.display.update()
 
     def in_game(self):
         in_game = True
@@ -972,6 +979,7 @@ class Game:
                             mouse_pos = pygame.mouse.get_pos()
                             if colision(MENU_BUTTON, mouse_pos):
                                 exited = True
+                    pygame.display.update()
                 break
             
             if stale:
@@ -989,6 +997,7 @@ class Game:
                             mouse_pos = pygame.mouse.get_pos()
                             if colision(MENU_BUTTON, mouse_pos):
                                 exited = True
+                    pygame.display.update()
                 break
 
             #impression du movement 
