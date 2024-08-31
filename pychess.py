@@ -47,6 +47,7 @@ PIECES = [B_KNIGHT, B_PAWN, B_ROOK, B_KING, B_QUEEN, B_BISHOP, W_PAWN, W_ROOK, W
 
 class Pawn:
     def __init__(self, black, surface):
+        self.possible_dest = []
         self.points = 1
         self.black = black
         self.surface = surface
@@ -59,6 +60,9 @@ class Pawn:
             self.file = W_PAWN
             self.image = pygame.image.load(self.file)
 
+    def get_possible_dest(self):
+        return self.possible_dest
+    
     def get_points(self):
         return self.points
 
@@ -83,74 +87,51 @@ class Pawn:
     def get_double_jumped(self):
         return self.double_jumped
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
 
+        x_dest = orig[X]
         # checking 2 foward
         if not self.moved:
             y_dest = orig[Y] + 2 * player_factor
-            if (y_dest >= 0 and y_dest <= 7) and board_array[orig[X]][y_dest] is None and board_array[orig[X]][orig[Y] + 1 * player_factor] is None:
-                if is_simulation or self.safe_move(board, orig, (orig[X], y_dest)):
-                    possible_dest.append((orig[X], y_dest))
+            if is_in_bounds(x_dest, y_dest) and board_array[x_dest][y_dest] is None and board_array[x_dest][orig[Y] + 1 * player_factor] is None:
+                if is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor):
+                    self.possible_dest.append((x_dest, y_dest))
 
         y_dest = orig[Y] + 1 * player_factor
 
         #check 1 foward
-        if (y_dest >= 0 and y_dest <= 7) and board_array[orig[X]][y_dest] is None:
-            if is_simulation or self.safe_move(board, orig, (orig[X], y_dest)):
-                possible_dest.append((orig[X], y_dest))
+        if is_in_bounds(x_dest, y_dest) and board_array[x_dest][y_dest] is None:
+                if is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor):
+                    self.possible_dest.append((x_dest, y_dest))
 
         x_dest = orig[X] + 1 * player_factor
 
-        #checking side kill 1/2
-        if x_dest >= 0 and x_dest <= 7:
-            if board_array[x_dest][y_dest] is not None and board_array[x_dest][y_dest].is_black() != self.black:
-                if is_simulation or self.safe_move(board, orig, (x_dest, y_dest)):
-                    possible_dest.append((x_dest, y_dest))
-            elif board_array[x_dest][y_dest] is None and type(board_array[x_dest][y_dest - 1 * player_factor]) == Pawn:
-                if board_array[x_dest][y_dest - 1 * player_factor].is_black() != self.black and board_array[x_dest][y_dest - 1 * player_factor].get_double_jumped():
-                    possible_dest.append((x_dest, y_dest))
-
+        #check sid kill 1/2
+        self.check_side_kill(orig, board_array, x_dest, y_dest, is_sim, player_factor)
+        
         x_dest = orig[X] - 1 * player_factor
 
-        #checking side kill 2/2
-        if x_dest >= 0 and x_dest <= 7:
-            if board_array[x_dest][y_dest] is not None and board_array[x_dest][y_dest].is_black() != self.black:
-                if is_simulation or self.safe_move(board, orig, (x_dest, y_dest)):
-                    possible_dest.append((x_dest, y_dest))
-            elif board_array[x_dest][y_dest] is None and type(board_array[x_dest][y_dest - 1 * player_factor]) == Pawn:
-                if board_array[x_dest][y_dest - 1 * player_factor].is_black() != self.black and board_array[x_dest][y_dest - 1 * player_factor].get_double_jumped():
-                    possible_dest.append((x_dest, y_dest))
+        #check sid kill 2/2
+        self.check_side_kill(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        return possible_dest
+        return self.possible_dest
+        
+    def check_side_kill(self, orig, board_array, x_dest, y_dest, is_sim, player_factor):
+        if is_in_bounds(x_dest, y_dest) and (is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor)):
+                if board_array[x_dest][y_dest] is not None and board_array[x_dest][y_dest].is_black() != self.black:
+                    self.possible_dest.append((x_dest, y_dest))
+                elif self.is_en_passant(board_array, x_dest, y_dest, player_factor):
+                    self.possible_dest.append((x_dest, y_dest))
 
-
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
-
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
-
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
+    def is_en_passant(self, board_array, x_dest, y_dest, player_factor):
+        is_en_passant = False
+        if type(board_array[x_dest][y_dest - 1 * player_factor]) is Pawn:
+            is_en_passant = board_array[x_dest][y_dest - 1 * player_factor].is_black() != self.black and board_array[x_dest][y_dest - 1 * player_factor].get_double_jumped()
+        return is_en_passant        
     
 ########################################################################################################################################
 
@@ -166,6 +147,9 @@ class Rook:
         else:
             self.file = W_ROOK
             self.image = pygame.image.load(self.file)
+
+    def get_possible_dest(self):
+        return self.possible_dest
 
     def get_points(self):
         return self.points
@@ -186,9 +170,8 @@ class Rook:
     def is_black(self):
         return self.black
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
@@ -199,73 +182,42 @@ class Rook:
         vert_2_done = False
 
         for i in range(1, 8):
-            x = i * player_factor
-            y = i * player_factor
+            i = i * player_factor
 
-            #checking horizontal move 1/2
-            if not hor_1_done and orig[X] + x >= 0 and orig[X] + x <= 7:
-                is_not_none = board_array[orig[X] + x][orig[Y]] is not None
-                if is_not_none and board_array[orig[X] + x][orig[Y]].is_black() == self.black:
-                    hor_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + x, orig[Y])):
-                    possible_dest.append((orig[X] + x, orig[Y]))
-                    if is_not_none and board_array[orig[X] + x][orig[Y]].is_black() != self.black:
-                        hor_1_done = True
+            #checking hor 1
+            x_dest = orig[X] + i
+            hor_1_done = self.sonar(orig, player_factor, board_array, x_dest, orig[Y], hor_1_done, is_sim)
 
-            #checking horizontal move 2/2
-            if not hor_2_done and orig[X] - x >= 0 and orig[X] - x <= 7:
-                is_not_none = board_array[orig[X] - x][orig[Y]] is not None
-                if is_not_none and board_array[orig[X] - x][orig[Y]].is_black() == self.black:
-                    hor_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - x, orig[Y])):
-                    possible_dest.append((orig[X] - x, orig[Y]))
-                    if is_not_none and board_array[orig[X] - x][orig[Y]].is_black() != self.black:
-                        hor_2_done = True    
+            #checking hor 2
+            x_dest = orig[X] - i
+            hor_2_done = self.sonar(orig, player_factor, board_array, x_dest, orig[Y], hor_2_done, is_sim)
 
-            #checking vertical move 1/2
-            if not vert_1_done and orig[Y] + y >= 0 and orig[Y] + y <= 7:
-                is_not_none = board_array[orig[X]][orig[Y] + y] is not None
-                if is_not_none and board_array[orig[X]][orig[Y] + y].is_black() == self.black:
-                    vert_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X], orig[Y] + y)):
-                    possible_dest.append((orig[X], orig[Y] + y))
-                    if is_not_none and board_array[orig[X]][orig[Y] + y].is_black() != self.black:
-                        vert_1_done = True
+            #checking vert 1
+            y_dest = orig[Y] + i
+            vert_1_done = self.sonar(orig, player_factor, board_array, orig[X], y_dest, vert_1_done, is_sim)
 
-            #checking vertical move 2/2
-            if not vert_2_done and orig[Y] - y >= 0 and orig[Y] - y <= 7:
-                is_not_none = board_array[orig[X]][orig[Y] - y] is not None
-                if is_not_none and board_array[orig[X]][orig[Y] - y].is_black() == self.black:
-                    vert_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X], orig[Y] - y)):
-                    possible_dest.append((orig[X], orig[Y] - y))
-                    if is_not_none and board_array[orig[X]][orig[Y] - y].is_black() != self.black:
-                        vert_2_done = True
+            #checking vert 2
+            y_dest = orig[Y] - i
+            vert_2_done = self.sonar(orig, player_factor, board_array, orig[X], y_dest, vert_2_done, is_sim)
 
-        return possible_dest
-    
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
+        if is_sim:
+            mock_possible_dest = self.possible_dest
+            self.possible_dest = []
+            return mock_possible_dest
+        else:
+            return self.possible_dest
+     
+    def sonar(self, orig, player_factor, board_array, x_dest, y_dest, done, is_sim):
+        if not done and is_in_bounds(x_dest, y_dest):
+                is_not_none = board_array[x_dest][y_dest] is not None
+                if is_not_none and board_array[x_dest][y_dest].is_black() == self.black:
+                    done = True
+                elif is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor):
+                    self.possible_dest.append((x_dest, y_dest))
+                    if is_not_none and board_array[x_dest][y_dest].is_black() != self.black:
+                        done = True
+        return done
 
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
-
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
     
 ########################################################################################################################################
 
@@ -281,6 +233,9 @@ class Knight:
             self.file = W_KNIGHT
             self.image = pygame.image.load(self.file)
 
+    def get_possible_dest(self):
+        return self.possible_dest
+
     def get_points(self):
         return self.points
 
@@ -293,106 +248,58 @@ class Knight:
     def is_black(self):
         return self.black
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
             
-        dest_x = orig[X] - 1 * player_factor
-        dest_y = orig[Y] - 2 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] - 1 * player_factor
+        y_dest = orig[Y] - 2 * player_factor
 
-        dest_x = orig[X] + 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        dest_x = orig[X] + 2 * player_factor
-        dest_y = orig[Y] - 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] + 1 * player_factor
 
-        dest_y = orig[Y] + 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        dest_x = orig[X] + 1 * player_factor
-        dest_y = orig[Y] + 2 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] + 2 * player_factor
+        y_dest = orig[Y] - 1 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        dest_x = orig[X] - 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        y_dest = orig[Y] + 1 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        dest_x = orig[X] - 2 * player_factor
-        dest_y = orig[Y] + 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] + 1 * player_factor
+        y_dest = orig[Y] + 2 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        dest_y = orig[Y] - 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            is_none = board_array[dest_x][dest_y] is None
-            if is_none:
-                possible_dest.append((dest_x, dest_y))
-            elif board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] - 1 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
 
-        return possible_dest
+        x_dest = orig[X] - 2 * player_factor
+        y_dest = orig[Y] + 1 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
+
+        y_dest = orig[Y] - 1 * player_factor
+        
+        self.check_L_move(orig, board_array, x_dest, y_dest, is_sim, player_factor)
+
+        return self.possible_dest
     
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
+    def check_L_move(self, orig, board_array, x_dest, y_dest, is_sim, player_factor):
+        if is_in_bounds(x_dest, y_dest)  and (is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor)):
+            is_none = board_array[x_dest][y_dest] is None
+            if is_none:
+                self.possible_dest.append((x_dest, y_dest))
+            elif board_array[x_dest][y_dest].is_black() != self.black:
+                self.possible_dest.append((x_dest, y_dest))
 
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
-
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
-    
 ########################################################################################################################################
 
 class Bishop:
@@ -407,6 +314,9 @@ class Bishop:
             self.file = W_BISHOP
             self.image = pygame.image.load(self.file)
     
+    def get_possible_dest(self):
+        return self.possible_dest
+    
     def get_points(self):
         return self.points
 
@@ -419,9 +329,8 @@ class Bishop:
     def is_black(self):
         return self.black
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
@@ -435,69 +344,38 @@ class Bishop:
             i = i * player_factor
 
             #checking diag 1
-            if not diag_1_done and orig[X] + i >= 0 and orig[X] + i <= 7 and orig[Y] + i >= 0 and orig[Y] + i <= 7:
-                is_not_none = board_array[orig[X] + i][orig[Y] + i] is not None
-                if is_not_none and board_array[orig[X] + i][orig[Y] + i].is_black() == self.black:
-                    diag_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + i, orig[Y] + i)):
-                    possible_dest.append((orig[X] + i, orig[Y] + i))
-                    if is_not_none and board_array[orig[X] + i][orig[Y] + i].is_black() != self.black:
-                        diag_1_done = True
-            
+            x_dest = orig[X] + i
+            y_dest = orig[Y] + i
+            diag_1_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_1_done, is_sim)
+
             #checkin diag 2
-            if not diag_2_done and orig[X] - i >= 0 and orig[X] - i <= 7 and orig[Y] - i >= 0 and orig[Y] - i <= 7:
-                is_not_none = board_array[orig[X] - i][orig[Y] - i] is not None
-                if is_not_none and board_array[orig[X] - i][orig[Y] - i].is_black() == self.black:
-                    diag_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - i, orig[Y] - i)):
-                    possible_dest.append((orig[X] - i, orig[Y] - i))
-                    if is_not_none and board_array[orig[X] - i][orig[Y] - i].is_black() != self.black:
-                        diag_2_done = True
+            x_dest = orig[X] - i
+            y_dest = orig[Y] - i
+            diag_2_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_2_done, is_sim)
 
             #checking diag 3
-            if not diag_3_done and orig[X] + i >= 0 and orig[X] + i <= 7 and orig[Y] - i >= 0 and orig[Y] - i <= 7:
-                is_not_none = board_array[orig[X] + i][orig[Y] - i] is not None
-                if is_not_none and board_array[orig[X] + i][orig[Y] - i].is_black() == self.black:
-                    diag_3_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + i, orig[Y] - i)):
-                    possible_dest.append((orig[X] + i, orig[Y] - i))
-                    if is_not_none and board_array[orig[X] + i][orig[Y] - i].is_black() != self.black:
-                        diag_3_done = True
+            x_dest = orig[X] + i
+            y_dest = orig[Y] - i
+            diag_3_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_3_done, is_sim)
 
             #checking diag 4
-            if not diag_4_done and orig[X] - i >= 0 and orig[X] - i <= 7 and orig[Y] + i >= 0 and orig[Y] + i <= 7:
-                is_not_none = board_array[orig[X] - i][orig[Y] + i] is not None
-                if is_not_none and board_array[orig[X] - i][orig[Y] + i].is_black() == self.black:
-                    diag_4_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - i, orig[Y] + i)):
-                    possible_dest.append((orig[X] - i, orig[Y] + i))
-                    if is_not_none and board_array[orig[X] - i][orig[Y] + i].is_black() != self.black:
-                        diag_4_done = True
+            x_dest = orig[X] - i
+            y_dest = orig[Y] + i
+            diag_4_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_4_done, is_sim)
         
-        return possible_dest
+        return self.possible_dest
     
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
-
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
-
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
+    def sonar(self, orig, player_factor, board_array, x_dest, y_dest, done, is_sim):
+        if not done and is_in_bounds(x_dest, y_dest):
+            is_not_none = board_array[x_dest][y_dest] is not None
+            if is_not_none and board_array[x_dest][y_dest].is_black() == self.black:
+                done = True
+            elif is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor):
+                self.possible_dest.append((x_dest, y_dest))
+                if is_not_none and board_array[x_dest][y_dest].is_black() != self.black:
+                    done = True
+        return done
+    
     
 ########################################################################################################################################
 
@@ -513,6 +391,9 @@ class Queen:
             self.file = W_QUEEN
             self.image = pygame.image.load(self.file)
 
+    def get_possible_dest(self):
+        return self.possible_dest
+    
     def get_points(self):
         return self.points
     
@@ -525,9 +406,8 @@ class Queen:
     def is_black(self):
         return self.black
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
@@ -545,114 +425,54 @@ class Queen:
         for i in range(1, 8):
             i = i * player_factor
 
+            x_dest = orig[X] + i
+            y_dest = orig[Y] + i
+
+            #checking hor 1
+            hor_1_done = self.sonar(orig, player_factor, board_array, x_dest, orig[Y], hor_1_done, is_sim)
+
             #checking diag 1
-            if not diag_1_done and orig[X] + i >= 0 and orig[X] + i <= 7 and orig[Y] + i >= 0 and orig[Y] + i <= 7:
-                is_not_none = board_array[orig[X] + i][orig[Y] + i] is not None
-                if is_not_none and board_array[orig[X] + i][orig[Y] + i].is_black() == self.black:
-                    diag_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + i, orig[Y] + i)):
-                    possible_dest.append((orig[X] + i, orig[Y] + i))
-                    if is_not_none and board_array[orig[X] + i][orig[Y] + i].is_black() != self.black:
-                        diag_1_done = True
-            
+            diag_1_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_1_done, is_sim)
+
+            x_dest = orig[X] - i
+            y_dest = orig[Y] - i
+
+            #checking hor 2
+            hor_2_done = self.sonar(orig, player_factor, board_array, x_dest, orig[Y], hor_2_done, is_sim)
+
             #checkin diag 2
-            if not diag_2_done and orig[X] - i >= 0 and orig[X] - i <= 7 and orig[Y] - i >= 0 and orig[Y] - i <= 7:
-                is_not_none = board_array[orig[X] - i][orig[Y] - i] is not None
-                if is_not_none and board_array[orig[X] - i][orig[Y] - i].is_black() == self.black:
-                    diag_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - i, orig[Y] - i)):
-                    possible_dest.append((orig[X] - i, orig[Y] - i))
-                    if is_not_none and board_array[orig[X] - i][orig[Y] - i].is_black() != self.black:
-                        diag_2_done = True
+            diag_2_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_2_done, is_sim)
+
+            x_dest = orig[X] + i
+            y_dest = orig[Y] - i
+
+            #checking vert 1
+            vert_1_done = self.sonar(orig, player_factor, board_array, orig[X], y_dest, vert_1_done, is_sim)
 
             #checking diag 3
-            if not diag_3_done and orig[X] + i >= 0 and orig[X] + i <= 7 and orig[Y] - i >= 0 and orig[Y] - i <= 7:
-                is_not_none = board_array[orig[X] + i][orig[Y] - i] is not None
-                if is_not_none and board_array[orig[X] + i][orig[Y] - i].is_black() == self.black:
-                    diag_3_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + i, orig[Y] - i)):
-                    possible_dest.append((orig[X] + i, orig[Y] - i))
-                    if is_not_none and board_array[orig[X] + i][orig[Y] - i].is_black() != self.black:
-                        diag_3_done = True
+            diag_3_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_3_done, is_sim)
+
+            x_dest = orig[X] - i
+            y_dest = orig[Y] + i
+
+            #checking vert 2
+            vert_2_done = self.sonar(orig, player_factor, board_array, orig[X], y_dest, vert_2_done, is_sim)
 
             #checking diag 4
-            if not diag_4_done and orig[X] - i >= 0 and orig[X] - i <= 7 and orig[Y] + i >= 0 and orig[Y] + i <= 7:
-                is_not_none = board_array[orig[X] - i][orig[Y] + i] is not None
-                if is_not_none and board_array[orig[X] - i][orig[Y] + i].is_black() == self.black:
-                    diag_4_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - i, orig[Y] + i)):
-                    possible_dest.append((orig[X] - i, orig[Y] + i))
-                    if is_not_none and board_array[orig[X] - i][orig[Y] + i].is_black() != self.black:
-                        diag_4_done = True
+            diag_4_done = self.sonar(orig, player_factor, board_array, x_dest, y_dest, diag_4_done, is_sim)
         
-        for i in range(1, 8):
-            x = i * player_factor
-            y = i * player_factor
+        return self.possible_dest
 
-            #checking horizontal move 1/2
-            if not hor_1_done and orig[X] + x >= 0 and orig[X] + x <= 7:
-                is_not_none = board_array[orig[X] + x][orig[Y]] is not None
-                if is_not_none and board_array[orig[X] + x][orig[Y]].is_black() == self.black:
-                    hor_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] + x, orig[Y])):
-                    possible_dest.append((orig[X] + x, orig[Y]))
-                    if is_not_none and board_array[orig[X] + x][orig[Y]].is_black() != self.black:
-                        hor_1_done = True
-
-            #checking horizontal move 2/2
-            if not hor_2_done and orig[X] - x >= 0 and orig[X] - x <= 7:
-                is_not_none = board_array[orig[X] - x][orig[Y]] is not None
-                if is_not_none and board_array[orig[X] - x][orig[Y]].is_black() == self.black:
-                    hor_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X] - x, orig[Y])):
-                    possible_dest.append((orig[X] - x, orig[Y]))
-                    if is_not_none and board_array[orig[X] - x][orig[Y]].is_black() != self.black:
-                        hor_2_done = True    
-
-            #checking vertical move 1/2
-            if not vert_1_done and orig[Y] + y >= 0 and orig[Y] + y <= 7:
-                is_not_none = board_array[orig[X]][orig[Y] + y] is not None
-                if is_not_none and board_array[orig[X]][orig[Y] + y].is_black() == self.black:
-                    vert_1_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X], orig[Y] + y)):
-                    possible_dest.append((orig[X], orig[Y] + y))
-                    if is_not_none and board_array[orig[X]][orig[Y] + y].is_black() != self.black:
-                        vert_1_done = True
-
-            #checking vertical move 2/2
-            if not vert_2_done and orig[Y] - y >= 0 and orig[Y] - y <= 7:
-                is_not_none = board_array[orig[X]][orig[Y] - y] is not None
-                if is_not_none and board_array[orig[X]][orig[Y] - y].is_black() == self.black:
-                    vert_2_done = True
-                elif is_simulation or self.safe_move(board, orig, (orig[X], orig[Y] - y)):
-                    possible_dest.append((orig[X], orig[Y] - y))
-                    if is_not_none and board_array[orig[X]][orig[Y] - y].is_black() != self.black:
-                        vert_2_done = True
-        
-        return possible_dest
-    
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
-
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
-
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
+    def sonar(self, orig, player_factor, board_array, x_dest, y_dest, done, is_sim):
+        if not done and is_in_bounds(x_dest, y_dest):
+                is_not_none = board_array[x_dest][y_dest] is not None
+                if is_not_none and board_array[x_dest][y_dest].is_black() == self.black:
+                    done = True
+                elif is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor):
+                    self.possible_dest.append((x_dest, y_dest))
+                    if is_not_none and board_array[x_dest][y_dest].is_black() != self.black:
+                        done = True
+        return done
     
 ########################################################################################################################################
 
@@ -666,6 +486,9 @@ class King:
         else:
             self.image = pygame.image.load(W_KING)
 
+    def get_possible_dest(self):
+        return self.possible_dest
+    
     def get_moved(self):
         return self.moved
     
@@ -681,112 +504,76 @@ class King:
     def is_black(self):
         return self.black
     
-    def possible_dest_finder(self, board, orig, is_simulation):
-        small_castle = True
-        big_castle = True
-        board_array = board.get_board()
-        possible_dest = []
+    def possible_dest_finder(self, board_array, orig, is_sim):
+        self.possible_dest = []
         player_factor = -1
         if self.black:
             player_factor = 1
 
-        dest_x = orig[X] + 1 * player_factor
-        dest_y = orig[Y] + 1 * player_factor
+        x_dest = orig[X] + 1 * player_factor
+        y_dest = orig[Y] + 1 * player_factor
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        y_dest = orig[Y]
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_y = orig[Y]
-        if dest_x >=0 and dest_x <=7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        y_dest = orig[Y] - 1 * player_factor
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_y = orig[Y] - 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X]
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_x = orig[X]
-        if dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X] - 1 * player_factor
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_x = orig[X] - 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        y_dest = orig[Y]
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_y = orig[Y]
-        if dest_x >=0 and dest_x <=7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        y_dest = orig[Y] + 1 * player_factor
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
-        dest_y = orig[Y] + 1 * player_factor
-        if dest_x >=0 and dest_x <=7 and dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
-
-        dest_x = orig[X]
-        if dest_y >=0 and dest_y <= 7 and (is_simulation or self.safe_move(board, orig, (dest_x, dest_y))):
-            if board_array[dest_x][dest_y] is None or board_array[dest_x][dest_y].is_black() != self.black:
-                possible_dest.append((dest_x, dest_y))
+        x_dest = orig[X]
+        self.sonar(orig, player_factor, board_array, x_dest, y_dest, is_sim)
 
         #checking castles
-        if not self.moved and not is_simulation:
-            move = Move(self.surface, board, self.black)
-            possible_crossings = move.check_finder()
+        if not self.moved and not is_sim:
             #checking big castle
-            if self.black:
-                rook_valid = type(board_array[0][0]) == Rook and not board_array[0][0].get_moved()
-                rook_y = 0
-            else:
-                rook_valid = type(board_array[0][7]) == Rook and not board_array[0][7].get_moved()
-                rook_y = 7
-            if rook_valid:
-                for i in range(1, 4):
-                    if board_array[i][rook_y] is not None or (i, rook_y) in possible_crossings:
-                        big_castle = False 
-                        break
-                if big_castle:
-                    possible_dest.append((2, rook_y))
+            begin_index = 1
+            end_index = 4
+            x_final_pos = 2
+            self.check_castle(orig, player_factor, board_array, begin_index, end_index, x_final_pos)
 
             #checking small castle
-            if self.black:
-                rook_valid = type(board_array[7][0]) == Rook and not board_array[7][0].get_moved()
-            else:
-                rook_valid = type(board_array[7][7]) == Rook and not board_array[7][7].get_moved()
-            if rook_valid:
-                for i in range(5, 7):
-                    if board_array[i][rook_y] is not None or (i, rook_y) in possible_crossings:
-                        small_castle = False 
-                        break
-                if small_castle:
-                    possible_dest.append((6, rook_y))
-                    
-        return possible_dest
+            begin_index = 5
+            end_index = 7
+            x_final_pos = 6
+            self.check_castle(orig, player_factor, board_array, begin_index, end_index, x_final_pos)
+
+        return self.possible_dest
     
-    def safe_move(self, board, orig, dest):
-        move_is_safe = True
-        board_array = board.get_board()
-        mock_surface = None
+    def sonar(self, orig, player_factor, board_array, x_dest, y_dest, is_sim):
+        if is_in_bounds(x_dest, y_dest) and (is_sim or is_safe(orig, x_dest, y_dest, board_array, self.black, player_factor)):
+            if board_array[x_dest][y_dest] is None or board_array[x_dest][y_dest].is_black() != self.black:
+                self.possible_dest.append((x_dest, y_dest))
+        
+    def check_castle(self, orig, player_factor, board_array, begin_index, end_index, x_final_pos):
+        castle_valid = True
 
-        #move simulation
-        dest_content = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = board_array[orig[X]][orig[Y]]
-        board_array[orig[X]][orig[Y]] = None
-        move = Move(mock_surface, board, self.black)
-        possible_checks = move.check_finder()
-        for pos in possible_checks:
-            if type(board_array[pos[X]][pos[Y]]) == King and board_array[pos[X]][pos[Y]].is_black() == self.black:
-                move_is_safe = False
-                break
+        if self.black:
+            rook_valid = type(board_array[0][0]) is Rook and not board_array[0][0].get_moved()
+            rook_y = 0
+        else:
+            rook_valid = type(board_array[0][7]) is Rook and not board_array[0][7].get_moved()
+            rook_y = 7
 
-        #move restauration
-        board_array[orig[X]][orig[Y]] = board_array[dest[X]][dest[Y]]
-        board_array[dest[X]][dest[Y]] = dest_content
-
-        return move_is_safe
+        if rook_valid:
+            for i in range(begin_index, end_index):
+                if board_array[i][rook_y] is not None or not is_safe(orig, i, rook_y, board_array, self.black, player_factor):
+                    castle_valid = False 
+                    break
+                
+        if castle_valid:
+            self.possible_dest.append((x_final_pos, rook_y))
     
 ########################################################################################################################################
 ########################################################################################################################################
@@ -830,7 +617,7 @@ class Board:
     def get_board(self):
         return self.board
 
-    def print_board_white(self):
+    def print_board_white(self, is_promotion):
         black_turn = False
         self.surface.fill(BG_COL)
         font = pygame.font.SysFont(None, 30)
@@ -842,11 +629,12 @@ class Board:
             for i in range(8):
                 if self.board[i][j] is not None:
                     self.board[i][j].draw((i, j))
+        if not is_promotion:
+            self.balck_score.print(black_turn)
         self.white_score.print(black_turn)
-        self.balck_score.print(black_turn)
         pygame.display.update()
 
-    def print_board_black(self):
+    def print_board_black(self, is_promotion):
         black_turn = True
         self.surface.fill(BG_COL)
         font = pygame.font.SysFont(None, 30)
@@ -858,7 +646,8 @@ class Board:
             for i in range(8):
                 if self.board[i][j] is not None:
                     self.board[i][j].draw((7 - i, 7 - j))
-        self.white_score.print(black_turn)
+        if not is_promotion:
+            self.white_score.print(black_turn)
         self.balck_score.print(black_turn)
         pygame.display.update()
 
@@ -874,20 +663,18 @@ class Move:
         self.board = board
         self.board_array = self.board.get_board()
         self.black_turn =  black_turn
-        self.possible_dest = []
+        self.possible_piece_dest = []
+        self.possible_friendly_dest = []
         if black_turn:
             self.player_factor = 1
         else:
             self.player_factor = -1
-        for j in range(1, 8):
-            for i in range(1, 8):
-                if type(self.board_array[i][j]) == Pawn and self.board_array[i][j].is_black() == self.black_turn:
-                    self.board_array[i][j].set_double_jumped(False)
-
+        is_sim = False
+        self.possible_friendly_dest = board_friendly_search(is_sim, self.black_turn, self.board_array)
+        
     def validation(self):
         in_game = True
         valid = False
-        is_simulation = False
         while not valid:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -909,19 +696,18 @@ class Move:
                             self.y = 7 - self.y
                         square_non_empty = self.board_array[self.x][self.y] is not None
                         if square_non_empty and self.board_array[self.x][self.y].is_black() == self.black_turn:
-                            self.possible_dest = self.board_array[self.x][self.y].possible_dest_finder(self.board, (self.x, self.y), is_simulation)
+                            self.possible_piece_dest = self.board_array[self.x][self.y].get_possible_dest()
                             valid = True
         return in_game
 
     def revalidation(self):
-        is_simulation = False
         self.possible_dest = []
         self.x = self.mouse_pos[X]//SQUARE
         self.y = (self.mouse_pos[Y] - 50)//SQUARE
         if self.black_turn:
             self.x = 7 - self.x
             self.y = 7 - self.y
-        self.possible_dest = self.board_array[self.x][self.y].possible_dest_finder(self.board, (self.x, self.y), is_simulation)
+        self.possible_piece_dest = self.board_array[self.x][self.y].get_possible_dest()
 
     def execution(self, score):
         while True:
@@ -940,7 +726,7 @@ class Move:
                             dest = (7 - self.mouse_pos[X]//SQUARE, 7 - (self.mouse_pos[Y] - 50)//SQUARE)
                         else:
                             dest = (self.mouse_pos[X]//SQUARE, (self.mouse_pos[Y] - 50)//SQUARE)
-                        if dest in self.possible_dest:
+                        if dest in self.possible_piece_dest:
 
                             if type(self.board_array[self.x][self.y]) is Rook:
                                 if not self.board_array[self.x][self.y].get_moved():
@@ -975,7 +761,7 @@ class Move:
                                 #if en passant
                                 elif type(self.board_array[dest[X]][dest[Y] - 1 * self.player_factor]) == Pawn and self.board_array[dest[X]][dest[Y] - 1 * self.player_factor].get_double_jumped():
                                     if self.board_array[dest[X]][dest[Y] - 1 * self.player_factor].is_black() != self.black_turn:
-                                        score.update(self.board_array[dest[X]][dest[Y] - 1 * self.player_factor].get_points(), self.board_array[dest[X]][dest[Y - 1 * self.player_factor]].get_image())
+                                        score.update(self.board_array[dest[X]][dest[Y] - 1 * self.player_factor].get_points(), self.board_array[dest[X]][dest[Y] - 1 * self.player_factor].get_file())
                                         self.board_array[dest[X]][dest[Y] - 1 * self.player_factor] = None
 
                             #updating score:
@@ -988,9 +774,9 @@ class Move:
                             return True
                         elif self.board_array[dest[X]][dest[Y]] is not None and self.board_array[dest[X]][dest[Y]].is_black() == self.black_turn:
                             if self.black_turn:
-                                self.board.print_board_black()
+                                self.board.print_board_black(False)
                             else:
-                                self.board.print_board_white()
+                                self.board.print_board_white(False)
                             pygame.display.update()
                             return False
         
@@ -1003,61 +789,41 @@ class Move:
             x = self.x
             y = self.y
         pygame.draw.rect(self.surface, OUTLINE_COL, (x * SQUARE , y * SQUARE + 48, SQUARE, SQUARE + 2), 4)
-        for dest in self.possible_dest:
-            dest_x = dest[X]
-            dest_y = dest[Y]
-            b_dest_x = 7 - dest_x
-            b_dest_y = 7 - dest_y
-            if self.board_array[dest_x][dest_y] is None and not self.black_turn:
-                pygame.draw.circle(self.surface, DOT_COL, (dest_x * SQUARE + SQUARE/2 , dest_y * SQUARE + SQUARE/2 + 50), 20, 0)
-            elif self.board_array[dest_x][dest_y] is not None and not self.black_turn:
-                pygame.draw.circle(self.surface, KILL_COL, (dest_x * SQUARE + SQUARE/2 , dest_y * SQUARE + SQUARE/2 + 50), 20, 0)
-            elif self.board_array[dest_x][dest_y] is None and self.black_turn:
+        for dest in self.possible_piece_dest:
+            x_dest = dest[X]
+            y_dest = dest[Y]
+            b_dest_x = 7 - x_dest
+            b_dest_y = 7 - y_dest
+            if self.board_array[x_dest][y_dest] is None and not self.black_turn:
+                pygame.draw.circle(self.surface, DOT_COL, (x_dest * SQUARE + SQUARE/2 , y_dest * SQUARE + SQUARE/2 + 50), 20, 0)
+            elif self.board_array[x_dest][y_dest] is not None and not self.black_turn:
+                pygame.draw.circle(self.surface, KILL_COL, (x_dest * SQUARE + SQUARE/2 , y_dest * SQUARE + SQUARE/2 + 50), 20, 0)
+            elif self.board_array[x_dest][y_dest] is None and self.black_turn:
                 pygame.draw.circle(self.surface, DOT_COL, (b_dest_x * SQUARE + SQUARE/2 , b_dest_y * SQUARE + SQUARE/2 + 50), 20, 0)
             else:
                 pygame.draw.circle(self.surface, KILL_COL, (b_dest_x * SQUARE + SQUARE/2 , b_dest_y * SQUARE + SQUARE/2 + 50), 20, 0)
         pygame.display.update() 
-
-    def check_finder(self):
-        is_simulation = True
-        player_factor = -1
-        if self.black_turn:
-            player_factor = 1
-        possible_checks = []
-        for j in range(8):
-            for i in range(8):
-                if self.board_array[i][j] is not None and self.board_array[i][j].is_black() != self.black_turn:
-                    if type(self.board_array[i][j]) != Pawn:
-                        possible_checks += self.board_array[i][j].possible_dest_finder(self.board, (i, j), is_simulation)
-                    else:
-                        x = i + 1 * player_factor
-                        y = j - 1 * player_factor
-                        if x >= 0 and x <= 7 and y >=0 and y <=7:
-                            possible_checks.append((x, y))
-                        x = i - 1 * player_factor
-                        if x >= 0 and x <= 7:
-                            possible_checks.append((x, y))
-        return possible_checks
     
     def mate_finder(self):
-        check_mate = False
-        is_simulation = False
-        possible_pos = []
-        for j in range(8):
-            for i in range(8):
-                if self.board_array[i][j] is not None and self.board_array[i][j].is_black() == self.black_turn:
-                   possible_pos += self.board_array[i][j].possible_dest_finder(self.board, (i, j), is_simulation) 
-        if len(possible_pos) == 0:
-            check_mate = True
-        
-        return check_mate
-    
+        game_state = (False, False)
+        king_pos = (None, None)
+        is_sim = True
+        possible_enemy_dest = board_enemy_search(is_sim, self.black_turn, self.board_array, self.player_factor)
+        if len(self.possible_friendly_dest) == 0:
+            if king_pos in possible_enemy_dest:
+                game_state = (True, False)
+            else:
+                game_state = (True, True)
+        return game_state
+
     def promotion(self, board_array, orig):
         in_promotion = True
         #print the selector
         if self.black_turn:
+            self.board.print_board_black(True)
             pieces = [B_QUEEN, B_BISHOP, B_ROOK, B_KNIGHT]
         else: 
+            self.board.print_board_white(True)
             pieces = [W_QUEEN, W_BISHOP, W_ROOK, W_KNIGHT]
         i = 0
         for piece in pieces:
@@ -1154,6 +920,7 @@ class Game:
         black_turn = False
         changed = False
         check_mate = False
+        stale = False
         black_score = Score(self.surface, True)
         white_score = Score(self.surface, False)
         board = Board(self.surface, black_score, white_score)
@@ -1161,17 +928,21 @@ class Game:
             #impression initial du tour
             move_done = False
             if black_turn:
-                board.print_board_black()
+                board.print_board_black(False)
                 score = black_score
             else:
-                board.print_board_white()
+                board.print_board_white(False)
                 score = white_score
             pygame.display.update()
             #sequence de mouvement
             move = Move(self.surface, board, black_turn)
             while not move_done:
-                if move.mate_finder():
-                    check_mate = True
+                game_state = move.mate_finder()
+                if game_state[0]:
+                    if game_state[1]:
+                        stale = True
+                    else:
+                        check_mate = True
                     break
                 if not changed:
                     if not move.validation():
@@ -1202,12 +973,30 @@ class Game:
                             if colision(MENU_BUTTON, mouse_pos):
                                 exited = True
                 break
+            
+            if stale:
+                self.print_stale(not black_turn, board)
+                exited = False
+                while not exited:
+                    time.sleep(0.1)
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            quit()
+                        if event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_ESCAPE:
+                                exited = True
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            mouse_pos = pygame.mouse.get_pos()
+                            if colision(MENU_BUTTON, mouse_pos):
+                                exited = True
+                break
+
             #impression du movement 
             if in_game:      
                 if black_turn:
-                    board.print_board_black()
+                    board.print_board_black(False)
                 else:
-                    board.print_board_white()
+                    board.print_board_white(False)
                 pygame.display.update()
                 black_turn = not black_turn
                 time.sleep(0.5)
@@ -1219,11 +1008,22 @@ class Game:
         for j in range(8):
             for i in range (8):
                 if type(board_array[i][j]) is King and board_array[i][j].is_black() != black:
+                    font = pygame.font.SysFont(None, 50)
+                    mate_symb = font.render("#", True, KILL_COL)
+                    self.surface.blit(mate_symb, (120 * i + 90, 120 * j + 55))
                     pygame.draw.rect(self.surface, KILL_COL, (i * SQUARE , j * SQUARE + 48, SQUARE, SQUARE + 2), 4)
         pygame.display.update()
 
-    def print_stalemate(self):
-        pass
+    def print_stale(self, black, board):
+        board_array = board.get_board()
+        for j in range(8):
+            for i in range (8):
+                if type(board_array[i][j]) is King and board_array[i][j].is_black() != black:
+                    font = pygame.font.SysFont(None, 30)
+                    mate_symb = font.render("½-½", True, KILL_COL)
+                    self.surface.blit(mate_symb, (120 * i + 73, 120 * j + 55))
+                    pygame.draw.rect(self.surface, KILL_COL, (i * SQUARE , j * SQUARE + 48, SQUARE, SQUARE + 2), 4)
+        pygame.display.update()
 
     def draw_menu(self):
         font = pygame.font.SysFont(None, 100)
@@ -1248,6 +1048,56 @@ def colision(object, mouse_pos):
         y_axis_col = mouse_pos[1] >= object[1] and mouse_pos[1] <= object[1] + object[3]
         return x_axis_col and y_axis_col
 
+def is_in_bounds(x, y):
+    return x >= 0 and x <= 7 and y >=0 and y <= 7
+
+def board_enemy_search(is_sim, black_turn, board_array, player_factor):
+    possible_dest = []
+    for j in range(8):
+        for i in range(8):
+            if board_array[i][j] is not None and board_array[i][j].is_black() != black_turn:
+                    if type(board_array[i][j]) != Pawn:
+                        possible_dest += board_array[i][j].possible_dest_finder(board_array, (i, j), is_sim)
+                    else:
+                        possible_dest += enemy_pawn_possible_attacks(player_factor, i, j)
+    return possible_dest
+
+def board_friendly_search(is_sim, black_turn, board_array):
+    possible_dest = []
+    for j in range(8):
+        for i in range(8):
+            if board_array[i][j] is not None and board_array[i][j].is_black() == black_turn:
+                possible_dest += board_array[i][j].possible_dest_finder(board_array, (i, j), is_sim)
+                if type(board_array[i][j]) is Pawn and board_array[i][j].get_double_jumped():
+                        board_array[i][j].set_double_jumped(False)
+    return possible_dest
+
+def enemy_pawn_possible_attacks(player_factor, i, j):
+        possible_attacks = []
+        x_1 = i + 1 * player_factor
+        x_2 = i - 1 * player_factor
+        y = j - 1 * player_factor
+        if is_in_bounds(x_1, y):
+            possible_attacks.append((x_1, y))
+        if is_in_bounds(x_2, y):
+            possible_attacks.append((x_2, y))
+        return possible_attacks
+
+def is_safe(orig, x_dest, y_dest, board_array, black_turn, player_factor):
+    is_sim = True
+    is_safe = True
+    dest_piece = board_array[x_dest][y_dest]
+    board_array[x_dest][y_dest] = board_array[orig[X]][orig[Y]]
+    board_array[orig[X]][orig[Y]] = None
+    possible_checks = board_enemy_search(is_sim, black_turn, board_array, player_factor)
+    for dest in possible_checks:
+        if type(board_array[dest[X]][dest[Y]]) is King and board_array[dest[X]][dest[Y]].is_black() == black_turn:
+            is_safe = False
+            break
+    board_array[orig[X]][orig[Y]] = board_array[x_dest][y_dest]
+    board_array[x_dest][y_dest] = dest_piece
+    return is_safe
+
 def quit():
     pygame.quit()
     exit(0)
@@ -1256,10 +1106,3 @@ game = Game()
 game.in_menu()
 pygame.quit()
 exit(0)
-
-
-#TODO: 
-# polish king image
-# add sounds;
-#
-# Optimisation/refactoring: before every move, calculate all possible pos for every piece, save as attribute for each piece (and as big list of enemy pos for possible checks)
